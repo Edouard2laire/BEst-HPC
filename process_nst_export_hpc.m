@@ -161,7 +161,7 @@ function OutputFiles = Run(sProcess, sInputs)
 
             % Define data 
             OPTIONS = struct(); 
-            OPTIONS.mandatory.DataTime          = round(sDataIn.Time,6);
+            OPTIONS.mandatory.DataTime          = sDataIn.Time;
             OPTIONS.mandatory.Data              = sDataIn.F(GoodChannel,:);
             OPTIONS.mandatory.DataTypes         =  {ChannelMat.Channel(GoodChannel(1)).Type};
             OPTIONS.mandatory.ChannelTypes      = {ChannelMat.Channel(GoodChannel).Type};

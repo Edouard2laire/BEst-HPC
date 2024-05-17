@@ -11,14 +11,14 @@ function run_MEM(data, options_file)
     addpath(genpath('best-brainstorm-master/best'));
         
     input_struct = load(data);
-    sData = input_struct.sData;
-    bst_info = input_struct.bst_info;
+    sData        = input_struct.sData;
+    bst_info     = input_struct.bst_info;
 
     fprintf('Data  : %s \n', bst_info.Comment)
     fprintf('--------------------------------\n')
 
-    output_file = strrep(data,'in','out');
-    output_folder = fileparts(output_file);
+    output_file     = strrep(data,'in','out');
+    output_folder   = fileparts(output_file);
     if ~exist(output_folder)
         mkdir(output_folder)
     end
@@ -28,11 +28,15 @@ function run_MEM(data, options_file)
     OPTIONS = OPTIONS.MEMpaneloptions;
     OPTIONS.automatic.stand_alone =   1;
     OPTIONS.automatic.Comment     = 'MEM';
-    OPTIONS.wavelet.selected_scales = OPTIONS.wavelet.selected_scales';
+    OPTIONS.automatic.selected_samples = [];
+    
+    if isfield(OPTIONS,'wavelet') && isfield(OPTIONS.wavelet,'selected_scales') && size(OPTIONS.wavelet.selected_scales,1) > 1
+        OPTIONS.wavelet.selected_scales = OPTIONS.wavelet.selected_scales';
+    end
 
     nb_nodes = size(bst_info.sCortex.Vertices, 1);
     nb_samples = length(sData(1).OPTIONS.mandatory.DataTime);
-    nb_wavelengths  = length(sData);
+    nb_data  = length(sData);
 
     
     % try to start parralel port
@@ -41,40 +45,43 @@ function run_MEM(data, options_file)
     %     parpool(local_cluster);
     % end
 
-    dOD_sources = zeros(nb_nodes, nb_wavelengths, nb_samples);
-    diagnosis   = [];
+    sources = zeros(nb_nodes, nb_data, nb_samples);
 
-    for iwl=1:nb_wavelengths
-        fprintf('MEM > Computing MEM for wavelength %d\n', iwl); 
+    for iData=1:nb_data
+        fprintf('MEM > Computing MEM for data %d\n', iData); 
         
-        sDataWl = sData(iwl);
-        
+        sDataWl     = sData(iData);
+        MEMoptions  = be_struct_copy_fields( sDataWl.OPTIONS, OPTIONS, [],1 );
 
-        MEMoptions = be_struct_copy_fields( sDataWl.OPTIONS, OPTIONS, [],1 );
-
-        %% launch MEM (cMEM only in current version)
+        %% launch MEM 
         [Results, O_updated] = be_main_call(sDataWl.HM, MEMoptions);
 
-        %cMEM results
+        % MEM results
         grid_amp = zeros(nb_nodes, nb_samples); 
         grid_amp(bst_info.valid_nodes,:) = Results.ImageGridAmp;
         
-        dOD_sources(:, iwl, :)  = grid_amp;
-        diagnosis          = [diagnosis Results.MEMoptions.automatic];
+        sources(:, iData, :)  = grid_amp;
+        %diagnosis          = [diagnosis Results.MEMoptions.automatic];
     end
 
-    hb_extinctions = bst_info.hb_extinctions;
-
-    Hb_sources = zeros(nb_nodes, 3, nb_samples);
-    for idx=1:length(bst_info.valid_nodes)
-        inode = bst_info.valid_nodes(idx);
-        Hb_sources(inode, 1:2, :) = pinv(hb_extinctions) * ...
-                                    squeeze(dOD_sources(inode, :, :));
+    if isfield(bst_info,'hb_extinctions')
+        hb_extinctions = bst_info.hb_extinctions;
     
+        Hb_sources = zeros(nb_nodes, 3, nb_samples);
+        for idx=1:length(bst_info.valid_nodes)
+            inode = bst_info.valid_nodes(idx);
+            Hb_sources(inode, 1:2, :) = pinv(hb_extinctions) * ...
+                                        squeeze(sources(inode, :, :));
+        end
+        Hb_sources(:,3,:) = squeeze(sum(Hb_sources, 2));
     end
-    Hb_sources(:,3,:) = squeeze(sum(Hb_sources, 2));
 
     %delete(gcp('nocreate'))
-    %save(output_file, 'bst_info', 'OPTIONS', 'dOD_sources','Hb_sources', 'diagnosis','-v7.3');
+   if isfield(bst_info,'hb_extinctions')
+        save(output_file, 'bst_info', 'OPTIONS', 'sources','Hb_sources','-v7.3');
+   else
+        save(output_file, 'bst_info', 'OPTIONS', 'sources','-v7.3');
+   end
+
 end
 
