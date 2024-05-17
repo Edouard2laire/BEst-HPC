@@ -51,7 +51,7 @@ end
 function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
 
     OutputFiles = {};
-    folder_data = fullfile('/Users/edelaire1/Documents/Project/wMEM-fnirs', sProcess.options.token.Value  ,'out');
+    folder_data = fullfile('/Users/edelaire1/Documents/Project/BEst-HPC/data', sProcess.options.token.Value  ,'out');
     if ~exist(folder_data)
         bst_error(' Unable to find the data');
         return; 
@@ -60,55 +60,23 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
     files = dir(fullfile(folder_data, '*.mat'));
     for iFile = 1:length(files)
         sData = load(fullfile(files(iFile).folder, files(iFile).name));
+        bst_info = sData.bst_info;
         
-        sStudy = sData.sStudy; 
+        sStudy = bst_info.sStudy; 
         [sStudy, iStudy] = bst_get('Study', sStudy.FileName);
 
-        ChannelMat = in_bst_channel(sStudy.Channel.FileName);
-        headmodel = in_bst_headmodel(sStudy.HeadModel.FileName);
-        headmodel.FileName = sStudy.HeadModel.FileName;
-
-        sInputs = struct('FileName', sData.OPTIONS.DataFile,'iStudy', iStudy);
-
-        if ~isfield(sData, 'Hb_sources')
-            bst_progress('text', 'Calculating HbO/HbR/HbT in source space...');
-            % Compute dHb
-            hb_extinctions = nst_get_hb_extinctions(ChannelMat.Nirs.Wavelengths);
-            hb_extinctions = hb_extinctions ./10;% mm-1.mole-1.L
         
-            Hb_sources = zeros(size(sData.dOD_sources,1), 3, size(sData.dOD_sources,3));
-            valid_nodes = sData.diagnosis.valid_nodes;
-            for idx=1:length(valid_nodes)
-                inode = valid_nodes(idx);
-                Hb_sources(inode, 1:2, :) = pinv(hb_extinctions) * ...
-                                            squeeze(sData.dOD_sources(inode, :, :));
-            
-            end
-            Hb_sources(:,3,:) = squeeze(sum(Hb_sources, 2));
-            sData.Hb_sources = Hb_sources;
-        end
-
         %% Save results
+        nData = length(sData.sResultsBst);
         bst_progress('text', 'Saving Results...');
-        for iwl=1:1:length(ChannelMat.Nirs.Wavelengths)
-             swl = ['WL' num2str(ChannelMat.Nirs.Wavelengths(iwl))];
+        for iData=1:nData
 
-             [sStudy, ResultFile] = process_nst_cmem('add_surf_data',squeeze(sData.dOD_sources(:,iwl,:)), sData.OPTIONS.DataTime, headmodel, ...
-                                                  [sData.diagnosis(iwl).Comment     ' | ' swl 'nm'], ...
-                                                   sInputs, sStudy, sData.diagnosis(iwl).Comment, ...
-                                                   'OD', 0,1, sData.diagnosis(iwl));
-             OutputFiles{end+1} = ResultFile;
-        end
-        
-        hb_unit_factor = 1e6;
-        hb_unit = '\mumol.l-1';
-        hb_types = {'HbO', 'HbR','HbT'};
-        for ihb=1:3
-            [sStudy, ResultFile] = process_nst_cmem('add_surf_data',squeeze(sData.Hb_sources(:,ihb,:)) .* hb_unit_factor,...
-                                                 sData.OPTIONS.DataTime, headmodel, ...
-                                                 [sData.diagnosis(iwl).Comment     ' | ' hb_types{ihb}], ...
-                                                 sInputs, sStudy, sData.diagnosis(iwl).Comment, ...
-                                                 hb_unit, 0);    
+            ResultFile = bst_process('GetNewFilename', bst_fileparts(sStudy.FileName), 'results_MEM');
+            ResultsMat = sData.sResultsBst(iData);
+            ResultsMat = bst_history('add', ResultsMat, 'Import data', 'Import data from HPC');
+            bst_save(ResultFile, ResultsMat, 'v7.3');
+
+            db_add_data(iStudy, ResultFile, ResultsMat);
             OutputFiles{end+1} = ResultFile;
         end
 
