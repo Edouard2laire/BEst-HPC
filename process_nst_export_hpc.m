@@ -1,6 +1,6 @@
 function varargout = process_nst_export_hpc( varargin )
-% process_nst_export_hpc:  Compute source-localization using Bootstrap
-% and MEM
+% process_nst_export_hpc: Export data to compute MEM using the standalone
+% version on HPC computers
 
 % @=============================================================================
 % This function is part of the Brainstorm software:
@@ -20,7 +20,7 @@ function varargout = process_nst_export_hpc( varargin )
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Edouard Delaire, 2022
+% Authors: Edouard Delaire, 2022 - 2024
 
 eval(macro_method);
 end
@@ -38,49 +38,53 @@ function sProcess = GetDescription() %#ok<DEFNU>
     sProcess.nInputs     = 1;
     sProcess.nMinFiles   = 1;
 
-    sProcess.options.auto_neighborhood_order.Comment = 'Set neighborhood order automatically (default)';
+    sProcess.options.auto_neighborhood_order.Comment = '(NIRS only) Set neighborhood order automatically (default)';
     sProcess.options.auto_neighborhood_order.Type    = 'checkbox';
     sProcess.options.auto_neighborhood_order.Value   = 1;
 
-    sProcess.options.thresh_dis2cortex.Comment = 'Reconstruction Field of view (distance to montage border)';
+    sProcess.options.thresh_dis2cortex.Comment = '(NIRS only)  Reconstruction Field of view (distance to montage border)';
     sProcess.options.thresh_dis2cortex.Type    = 'value';
     sProcess.options.thresh_dis2cortex.Value   = {3, 'cm',2};
 
+        % Option: Sensors selection
+    sProcess.options.sensortypes.Comment = 'Sensor types:&nbsp;&nbsp;&nbsp;&nbsp;';
+    sProcess.options.sensortypes.Type    = 'text';
+    sProcess.options.sensortypes.Value   = 'MEG, EEG, NIRS';
+
 end
 %% ===== FORMAT COMMENT =====
-function Comment = FormatComment(sProcess) %#ok<DEFNU>
+function Comment = FormatComment(sProcess) 
     Comment = sProcess.Comment;
 end
 
 %% ===== RUN =====
-function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
+function OutputFiles = Run(sProcess, sInputs)
 
     OutputFiles = {};
 
     token = char(floor(26*rand(1, 10)) + 65); 
-    script_path = '/Users/edelaire1/Documents/Project/wMEM-fnirs';
+    script_path = '/Users/edelaire1/Documents/Project/BEst-HPC/data';
 
-    folder_out = fullfile('/Users/edelaire1/Documents/Project/wMEM-fnirs/data', token );
+    folder_out = fullfile(script_path, token );
     mkdir(fullfile(folder_out,'in'));
 
     
     %% Load head model
     sStudy = bst_get('Study', sInputs.iStudy);
     if isempty(sStudy.iHeadModel)
-        bst_error('No head model found. Consider running "NIRS -> Compute head model"');
+        bst_error('No head model found.');
         return;
     end
+
+    HeadModel = in_bst_headmodel(sStudy.HeadModel(sStudy.iHeadModel).FileName);
+    HeadModel.FileName = sStudy.HeadModel(sStudy.iHeadModel).FileName;
     
-    nirs_head_model = in_bst_headmodel(sStudy.HeadModel(sStudy.iHeadModel).FileName);
-    nirs_head_model.FileName = sStudy.HeadModel(sStudy.iHeadModel).FileName;
-    
-    cortex = in_tess_bst(nirs_head_model.SurfaceFile);
+    sCortex = in_tess_bst(HeadModel.SurfaceFile);
     
     fID = fopen(fullfile(script_path, sprintf('launch_script_%s.sh', token)), 'w+');
 
     for iInput = 1:length(sInputs)
         sData = struct('HM', struct(), 'OPTIONS', struct());
-
 
         if strcmp(sInputs(iInput).FileType, 'data')     % Imported data structure
             sDataIn = in_bst_data(sInputs(iInput).FileName);
@@ -89,72 +93,97 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
         end
     
         ChannelMat = in_bst_channel(sInputs(iInput).ChannelFile);
-        if ~isfield(ChannelMat.Nirs, 'Wavelengths')
-            bst_error(['cMEM source reconstruction works only for dOD data ' ... 
-                       ' (eg do not use MBLL prior to this process)']);
-            return;
-        end
+        isNIRS = isfield(ChannelMat,'Nirs');
 
-        thresh_dis2cortex       =  sProcess.options.thresh_dis2cortex.Value{1}  / 100;
-        valid_nodes             = nst_headmodel_get_FOV(ChannelMat, cortex, thresh_dis2cortex,sDataIn.ChannelFlag );
-
-        fprintf('MEM > Estimating neighborhood order\n'); 
-        if sProcess.options.auto_neighborhood_order.Value
+        if isNIRS
+            thresh_dis2cortex       =  sProcess.options.thresh_dis2cortex.Value{1}  / 100;
+            valid_nodes             =  nst_headmodel_get_FOV(ChannelMat, sCortex, thresh_dis2cortex,sDataIn.ChannelFlag );
+            nb_wavelengths          = length(ChannelMat.Nirs.Wavelengths);
+        
+            fprintf('MEM > Estimating neighborhood order\n'); 
+                
             swl = ['WL' num2str(ChannelMat.Nirs.Wavelengths(1))];
             n_channel = sum(strcmpi({ChannelMat.Channel.Group}, swl) & (sDataIn.ChannelFlag>0)');
-        
-            nbo = process_nst_cmem('estimate_nbo',cortex, valid_nodes, n_channel, 1 );
+            
+            nbo = process_nst_cmem('estimate_nbo',sCortex, valid_nodes, n_channel, 1 );
             fprintf('MEM > Using a NBO of %d\n', nbo); 
+        else
+            valid_nodes             = 1:size(sCortex.Vertices,1);
+            nb_wavelengths          = 1;
+            nbo                     = 4;
         end
 
-        nb_wavelengths  = length(ChannelMat.Nirs.Wavelengths);
-        for iwl=1:nb_wavelengths
-            swl = ['WL' num2str(ChannelMat.Nirs.Wavelengths(iwl))];
-            selected_chans = strcmpi({ChannelMat.Channel.Group}, swl) & (sDataIn.ChannelFlag>0)';
-            
 
-            % Define Head model
-            gain = nst_headmodel_get_gains(nirs_head_model,iwl, ChannelMat.Channel, find(selected_chans));
-        
-            % Remove 0 from the gain matrixHeadModel.Gain(1).matrix
-            tmp = gain(:,valid_nodes);
-            tmp(tmp == 0) = min(tmp(tmp > 0));
+        for iwl=1:nb_wavelengths
+
+            if isNIRS
+                swl = ['WL' num2str(ChannelMat.Nirs.Wavelengths(iwl))];
+                GoodChannel = strcmpi({ChannelMat.Channel.Group}, swl) & (sDataIn.ChannelFlag>0)';
             
+                % Define Head model
+                tmp = nst_headmodel_get_gains(HeadModel,iwl, ChannelMat.Channel, find(GoodChannel));
+            
+                % Remove 0 from the gain matrixHeadModel.Gain(1).matrix
+                Gain = tmp(:,valid_nodes);
+                Gain(Gain == 0) = min(Gain(Gain > 0));
+            else
+                GoodChannel = good_channel(ChannelMat.Channel, sDataIn.ChannelFlag, sProcess.options.sensortypes.Value);
+                % Apply current SSP projectors
+                if ~isempty(ChannelMat.Projector)
+                    % Rebuild projector in the expanded form (I-UUt)
+                    Proj = process_ssp2('BuildProjector', ChannelMat.Projector, [1 2]);
+                    % Apply projectors
+                    if ~isempty(Proj)
+                        % Get all sensors for which the gain matrix was successfully computed
+                        iGainSensors = find(sum(isnan(HeadModel.Gain), 2) == 0);
+                        % Apply projectors to gain matrix
+                        HeadModel.Gain(iGainSensors,:) = Proj(iGainSensors,iGainSensors) * HeadModel.Gain(iGainSensors,:);
+                    end
+                end
+                % Select only good channels
+                Gain = HeadModel.Gain(GoodChannel, :);
+
+                if any(ismember(unique({ChannelMat.Channel(GoodChannel).Type}), {'EEG','ECOG','SEEG'}))
+                    % Create average reference montage
+                    sMontage = panel_montage('GetMontageAvgRef', [], ChannelMat.Channel(GoodChannel), ChannelFlag(GoodChannel), 0);
+                    Gain = sMontage.Matrix * Gain;
+               end
+
+                Gain = bst_gain_orient(Gain, HeadModel.GridOrient);
+            end
+
             HM = struct();
-            HM.vertex_connectivity = cortex.VertConn(valid_nodes, valid_nodes);
-            HM.Gain(1).matrix = tmp;
-            HM.Gain(1).modality = 'NIRS';
+            HM.vertex_connectivity = sCortex.VertConn(valid_nodes, valid_nodes);
+            HM.Gain(1).matrix = Gain;
+            HM.Gain(1).modality = ChannelMat.Channel(GoodChannel(1)).Type;
             sData(iwl).HM = HM;
 
 
             % Define data 
             OPTIONS = struct(); 
             OPTIONS.mandatory.DataTime          = round(sDataIn.Time,6);
-            OPTIONS.mandatory.Data              = sDataIn.F(selected_chans,:);
-            OPTIONS.mandatory.DataTypes         =  {ChannelMat.Channel(1).Type};
-            OPTIONS.mandatory.ChannelTypes      = {ChannelMat.Channel(selected_chans).Type};
-            OPTIONS.mandatory.GoodChannel       = ones(sum(selected_chans), 1);
-            OPTIONS.mandatory.ChannelFlag       = ones(sum(selected_chans), 1);
+            OPTIONS.mandatory.Data              = sDataIn.F(GoodChannel,:);
+            OPTIONS.mandatory.DataTypes         =  {ChannelMat.Channel(GoodChannel(1)).Type};
+            OPTIONS.mandatory.ChannelTypes      = {ChannelMat.Channel(GoodChannel).Type};
+            OPTIONS.mandatory.GoodChannel       = GoodChannel;
+            OPTIONS.mandatory.ChannelFlag       = ones(length(GoodChannel), 1);
             
             sData(iwl).OPTIONS = OPTIONS;
         end
-
-
 
         bst_info                 = struct();
         bst_info.Comment         = sInputs(iInput).Comment;
         bst_info.sStudy          = sStudy;
         bst_info.DataFile        = sInputs(iInput).FileName;
-        bst_info.SurfaceFile     = nirs_head_model.SurfaceFile;
-        bst_info.HeadModelFile   = nirs_head_model.FileName;
-        bst_info.sCortex         = cortex;
+        bst_info.SurfaceFile     = HeadModel.SurfaceFile;
+        bst_info.HeadModelFile   = HeadModel.FileName;
+        bst_info.sCortex         = sCortex;
         bst_info.nbo             = nbo; 
         bst_info.valid_nodes     = valid_nodes;
-        bst_info.hb_extinctions  = nst_get_hb_extinctions(ChannelMat.Nirs.Wavelengths)./10;% mm-1.mole-1.L
+        if isNIRS
+            bst_info.hb_extinctions  = nst_get_hb_extinctions(ChannelMat.Nirs.Wavelengths)./10;% mm-1.mole-1.L
+        end
 
-        sOutput = struct(  'sData', sData, ...
-                           'bst_info',bst_info); 
-    
         %% Run MEM
         [~,sOutput_name] = fileparts(sInputs(iInput).FileName);
         save(fullfile(folder_out, 'in', sprintf('%s.mat', sOutput_name)), 'sData','bst_info');
