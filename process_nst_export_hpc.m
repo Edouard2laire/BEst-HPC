@@ -82,6 +82,7 @@ function OutputFiles = Run(sProcess, sInputs)
     sCortex = in_tess_bst(HeadModel.SurfaceFile);
     
     fID = fopen(fullfile(script_path, sprintf('launch_script_%s.sh', token)), 'w+');
+    fprintf(fID, 'mkdir %s \n',  fullfile('data', token, 'logs'));
 
     for iInput = 1:length(sInputs)
         sData = struct('HM', struct(), 'OPTIONS', struct());
@@ -188,10 +189,14 @@ function OutputFiles = Run(sProcess, sInputs)
         [~,sOutput_name] = fileparts(sInputs(iInput).FileName);
         save(fullfile(folder_out, 'in', sprintf('%s.mat', sOutput_name)), 'sData','bst_info');
 
-        fprintf(fID, 'qsub -j y -o logs/%s.txt -pe smp 16 -S /bin/bash  -cwd -q matlab.q -N MEM_%s ./start_hpc.sh %s %s \n', ...
-                       sprintf('%d_%s',iInput,token), sprintf('%d_%s',iInput,token), fullfile(token, 'in', sprintf('%s.mat', sOutput_name)),  'wMEM_options.json');
+        fprintf(fID, 'qsub -j y -o %s -pe smp 15 -S /bin/bash  -cwd -q  all.q -N MEM_%s ./start_hpc.sh %s %s \n', ...
+                                        fullfile('data', token, 'logs',sprintf('%d_%s.txt',iInput,token)), ...
+                                        sprintf('%d_%s',iInput,token), ...
+                                        fullfile('data', token, 'in', sprintf('%s.mat', sOutput_name)), ...
+                                        'wMEM_options.json');
     end
     fclose(fID);
+    fileattrib(fullfile(script_path, sprintf('launch_script_%s.sh', token),'+x'))
 
      fID = fopen(fullfile(folder_out, 'README.txt'), 'w+');
      fprintf(fID, 'Simulation created on %s \n', char(datetime('today')));
