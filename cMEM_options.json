@@ -1,0 +1,47 @@
+{
+  "MEMpaneloptions": {
+  "InverseMethod": "MEM",
+  "automatic": {
+    "MEMexpert": 0,
+    "version": "2.7.3",
+    "last_update": ""
+  },
+  "mandatory": {
+    "pipeline": "cMEM"
+  },
+  "optional": {
+    "TimeSegment": [-1, 1],
+    "BaselineType": [
+      "within-data"
+    ],
+    "Baseline": [],
+    "BaselineHistory": [ "within"],
+    "BaselineSegment": [-1, 0],
+    "normalization": "adaptive",
+    "groupAnalysis": 0,
+    "display": 0
+  },
+  "clustering": {
+    "neighborhood_order": 4,
+    "clusters_type": "static",
+    "MSP_scores_threshold": 0
+  },
+  "model": {
+    "depth_weigth_MNE": 0.5,
+    "depth_weigth_MEM": 0.5,
+    "active_mean_method": 2,
+    "alpha_method": 3,
+    "alpha_threshold": 0,
+    "initial_lambda": 1
+  },
+  "solver": {
+    "spatial_smoothing": 0.6,
+    "active_var_mult": 0.05,
+    "inactive_var_mult": 0,
+    "Optim_method": "fminunc",
+    "parallel_matlab": 1,
+    "NoiseCov_recompute": 1,
+    "NoiseCov_method": 2
+  }
+  }
+}
