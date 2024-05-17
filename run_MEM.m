@@ -65,13 +65,17 @@ function run_MEM(data, options_file)
         sResultsBst(iData).DataFile = bst_info.DataFile;
         sResultsBst(iData).HeadModelFile = bst_info.HeadModelFile;
         sResultsBst(iData).SurfaceFile = bst_info.SurfaceFile;
-        sResultsBst(iData).Comment      = O_updated.Comment;
+        
+        if isfield(bst_info,'hb_extinctions')
+            sResultsBst(iData).Comment      = [O_updated.Comment     ' | '  'WL' num2str( bst_info.Wavelengths(iData)) 'nm'];
+        else
+            sResultsBst(iData).Comment      = O_updated.Comment;
+        end
         sResultsBst(iData).Options      = O_updated;
         if isfield(bst_info,'hb_extinctions')
              sResultsBst(iData).DisplayUnits = 'OD';
         end
         sources(:, iData, :)  = grid_amp;
-        %diagnosis          = [diagnosis Results.MEMoptions.automatic];
     end
 
     if isfield(bst_info,'hb_extinctions')
@@ -84,14 +88,28 @@ function run_MEM(data, options_file)
                                         squeeze(sources(inode, :, :));
         end
         Hb_sources(:,3,:) = squeeze(sum(Hb_sources, 2));
+
+        sResultsBstHb = repmat(getTemplate(),1,3);
+        hb_unit_factor = 1e6;
+        hb_unit = '\mumol.l-1';
+        hb_types = {'HbO', 'HbR','HbT'};
+
+        for ihb=1:3
+            sResultsBstHb(ihb).ImageGridAmp = squeeze(Hb_sources(:,ihb,:)) .* hb_unit_factor;
+            sResultsBstHb(ihb).Time = sDataWl.OPTIONS.mandatory.DataTime;
+            sResultsBstHb(ihb).DataFile = bst_info.DataFile;
+            sResultsBstHb(ihb).HeadModelFile = bst_info.HeadModelFile;
+            sResultsBstHb(ihb).SurfaceFile = bst_info.SurfaceFile;
+            sResultsBstHb(ihb).Comment      = [O_updated.Comment    ' | ' hb_types{ihb}] ;
+            sResultsBstHb(ihb).Options      = O_updated;
+            sResultsBstHb(ihb).DisplayUnits = hb_unit;
+        end
+        sResultsBst = [sResultsBst , sResultsBstHb];
+
     end
 
     %delete(gcp('nocreate'))
-   if isfield(bst_info,'hb_extinctions')
-        save(output_file, 'bst_info', 'OPTIONS', 'sources','Hb_sources','-v7.3');
-   else
-        save(output_file, 'bst_info', 'OPTIONS', 'sResultsBst','-v7.3');
-   end
+    save(output_file, 'bst_info', 'OPTIONS', 'sResultsBst','-v7.3');
 
 end
 
