@@ -40,10 +40,10 @@ function run_MEM(data, options_file)
 
     
     % try to start parralel port
-    % if isempty(gcp('nocreate'))
-    %     local_cluster = parcluster('Processes');
-    %     parpool(local_cluster);
-    % end
+    if isempty(gcp('nocreate'))
+        local_cluster = parcluster('local');
+        parpool(local_cluster, 12);
+    end
     
     sources = zeros(nb_nodes, nb_data, nb_samples);
     sResultsBst = repmat(getTemplate(),1,nb_data);
