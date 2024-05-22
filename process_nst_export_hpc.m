@@ -119,10 +119,10 @@ function OutputFiles = Run(sProcess, sInputs)
 
             if isNIRS
                 swl = ['WL' num2str(ChannelMat.Nirs.Wavelengths(iwl))];
-                GoodChannel = strcmpi({ChannelMat.Channel.Group}, swl) & (sDataIn.ChannelFlag>0)';
+                GoodChannel = find(strcmpi({ChannelMat.Channel.Group}, swl) & (sDataIn.ChannelFlag>0)');
             
                 % Define Head model
-                tmp = nst_headmodel_get_gains(HeadModel,iwl, ChannelMat.Channel, find(GoodChannel));
+                tmp = nst_headmodel_get_gains(HeadModel,iwl, ChannelMat.Channel, GoodChannel);
             
                 % Remove 0 from the gain matrixHeadModel.Gain(1).matrix
                 Gain = tmp(:,valid_nodes);
@@ -183,6 +183,7 @@ function OutputFiles = Run(sProcess, sInputs)
         bst_info.valid_nodes     = valid_nodes;
         if isNIRS
             bst_info.hb_extinctions  = nst_get_hb_extinctions(ChannelMat.Nirs.Wavelengths)./10;% mm-1.mole-1.L
+            bst_info.Wavelengths     = ChannelMat.Nirs.Wavelengths;
         end
 
         %% Run MEM
@@ -196,7 +197,7 @@ function OutputFiles = Run(sProcess, sInputs)
                                         'wMEM_options.json');
     end
     fclose(fID);
-    fileattrib(fullfile(script_path, sprintf('launch_script_%s.sh', token),'+x'))
+    fileattrib(fullfile(script_path, sprintf('launch_script_%s.sh', token)),'+x')
 
      fID = fopen(fullfile(folder_out, 'README.txt'), 'w+');
      fprintf(fID, 'Simulation created on %s \n', char(datetime('today')));
