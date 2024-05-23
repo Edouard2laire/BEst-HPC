@@ -1,5 +1,23 @@
 #!/bin/bash
 
+Help()
+{
+   # Display Help
+   echo "Invalid Usage"
+   echo "Syntax: launch_MEM.sh token OPTIONS.json"
+   echo "options:"
+   echo "token            Token of the data you want to process."
+   echo "OPTIONS.json     Options used for MEM."
+   echo
+}
+
+if (( "$#" != 2 )) 
+then
+    Help
+    exit;
+fi
+
+
 token=${1}
 option=${2}
 
