@@ -13,7 +13,7 @@
       "MSP_scores_threshold": 0
     },
     "optional": {
-      "TimeSegment": [10, 200],
+      "TimeSegment": [0, 1029],
       "groupAnalysis": 0,
       "Baseline": [],
       "BaselineHistory": [
